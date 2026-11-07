@@ -103,6 +103,9 @@ func main() {
 
 		selectedScheduler = wrr
 
+	case "lc":
+		selectedScheduler = scheduler.NewLeastConnections(backends)
+
 	default:
 		log.Fatalf("Unsupported scheduling algorithm: %s", *algorithm)
 	}

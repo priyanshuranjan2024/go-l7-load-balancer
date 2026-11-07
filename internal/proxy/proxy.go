@@ -4,11 +4,17 @@ import (
 	"log"
 	"net/http"
 
+	"go-l7-load-balancer/internal/backend"
 	"go-l7-load-balancer/internal/scheduler"
 )
 
 type LoadBalancer struct {
 	scheduler scheduler.Scheduler
+}
+
+// Optional interface for schedulers that track active requests.
+type backendReleaser interface {
+	ReleaseBackend(*backend.Backend)
 }
 
 func New(s scheduler.Scheduler) *LoadBalancer {
@@ -17,8 +23,11 @@ func New(s scheduler.Scheduler) *LoadBalancer {
 	}
 }
 
-func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Select the next backend
+func (lb *LoadBalancer) ServeHTTP(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	// Select a backend.
 	selected := lb.scheduler.NextBackend()
 
 	if selected == nil {
@@ -30,6 +39,12 @@ func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Release the backend after the request finishes,
+	// but only for schedulers that track active requests.
+	if releaser, ok := lb.scheduler.(backendReleaser); ok {
+		defer releaser.ReleaseBackend(selected)
+	}
+
 	log.Printf(
 		"Forwarding request %s %s to %s",
 		r.Method,
@@ -37,6 +52,5 @@ func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		selected.URL.Host,
 	)
 
-	// Forward the request
 	selected.Proxy.ServeHTTP(w, r)
 }
