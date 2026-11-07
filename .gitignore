@@ -1,0 +1,13 @@
+# Compiled binaries
+/bin/
+/build/
+
+# Go test files
+*.out
+
+# IDE files
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
