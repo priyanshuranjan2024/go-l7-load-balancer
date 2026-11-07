@@ -3,44 +3,43 @@ package proxy
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"go-l7-load-balancer/internal/backend"
+	"go-l7-load-balancer/internal/metrics"
 	"go-l7-load-balancer/internal/scheduler"
 )
 
 type LoadBalancer struct {
 	scheduler scheduler.Scheduler
+	metrics   *metrics.Metrics
 }
 
-// Optional interface for schedulers that track active requests.
 type backendReleaser interface {
 	ReleaseBackend(*backend.Backend)
 }
 
-func New(s scheduler.Scheduler) *LoadBalancer {
+func New(s scheduler.Scheduler, m *metrics.Metrics) *LoadBalancer {
 	return &LoadBalancer{
 		scheduler: s,
+		metrics:   m,
 	}
 }
 
-func (lb *LoadBalancer) ServeHTTP(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	// Select a backend.
+func (lb *LoadBalancer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	defer func() {
+		lb.metrics.RecordRequest(time.Since(start))
+	}()
+
 	selected := lb.scheduler.NextBackend()
 
 	if selected == nil {
-		http.Error(
-			w,
-			"No available backend servers",
-			http.StatusServiceUnavailable,
-		)
+		http.Error(w, "No available backend servers", http.StatusServiceUnavailable)
 		return
 	}
 
-	// Release the backend after the request finishes,
-	// but only for schedulers that track active requests.
 	if releaser, ok := lb.scheduler.(backendReleaser); ok {
 		defer releaser.ReleaseBackend(selected)
 	}
